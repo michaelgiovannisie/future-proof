@@ -210,7 +210,14 @@ public class Notes1 {
                 finish(0);
                 break;
             case "update":
-                
+                if (args.length < 2) {
+                    System.err.println("Error: No filename provided.");
+                    System.err.println("Usage: java Notes1 update <filename>");
+                    finish(1);
+                }
+                updateNote(notesDir, args[1]);
+                finish(0);
+                break;
             default:
                 System.err.println("Error: Unknown command '" + command + "'");
                 System.err.println("Try 'java Notes1 help' for more information.");
@@ -246,7 +253,7 @@ public class Notes1 {
 
     }
 
-    private static void readNote(Path notesDir, String fileName) {
+    public static void readNote(Path notesDir, String fileName) {
         try {
             Path notesSubdir = notesDir.resolve("notes");
             Path notePath = notesSubdir.resolve(fileName);
@@ -278,7 +285,6 @@ public class Notes1 {
         } catch (Exception e) {
             System.err.println("Error updating note: " + e.getMessage());
         }
-
     }
 
 }
