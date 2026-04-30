@@ -39,16 +39,13 @@ public class Notes1 {
     private static Map<String, String> parseYamlHeader(Path filePath) {
         Map<String, String> metadata = new HashMap<>();
         metadata.put("file", filePath.getFileName().toString());
-
         try {
             List<String> lines = Files.readAllLines(filePath);
-
             // Check if file starts with YAML front matter
             if (lines.isEmpty() || !lines.get(0).trim().equals("---")) {
                 metadata.put("title", filePath.getFileName().toString());
                 return metadata;
             }
-
             // Find the closing ---
             int yamlEnd = -1;
             for (int i = 1; i < lines.size(); i++) {
@@ -57,11 +54,9 @@ public class Notes1 {
                     break;
                 }
             }
-
             if (yamlEnd == -1) {
                 yamlEnd = lines.size();
             }
-
             // Parse YAML lines (simple parsing for basic key: value pairs)
             for (int i = 1; i < yamlEnd; i++) {
                 String line = lines.get(i).trim();
@@ -75,15 +70,12 @@ public class Notes1 {
                     metadata.put(key, value);
                 }
             }
-
             if(!metadata.containsKey("title")){
                 metadata.put("title", filePath.getFileName().toString());
             }
-
         } catch (IOException e) {
             metadata.put("error", e.getMessage());
         }
-
         return metadata;
     }
 
@@ -118,24 +110,20 @@ public class Notes1 {
             System.err.println("Error reading notes directory: " + e.getMessage());
             return false;
         }
-
         if (noteFiles.isEmpty()) {
             System.out.println("No notes found in " + notesDir);
             System.err.println("Copy test notes with: cp test-notes/*.md ~/.notes/");
             return true;
         }
-
         // Parse and display notes
         System.out.println("Notes in " + notesDir + ":");
         System.out.println("=".repeat(60));
-
         for (Path noteFile : noteFiles) {
             // this should probably be a private method to be re-used
             Map<String, String> metadata = parseYamlHeader(noteFile);
             String title = metadata.getOrDefault("title", noteFile.getFileName().toString());
             String created = metadata.getOrDefault("created", "N/A");
             String tags = metadata.getOrDefault("tags", "");
-
             System.out.println("\n" + noteFile.getFileName());
             System.out.println("  Title: " + title);
             if (!created.equals("N/A")) {
@@ -211,6 +199,18 @@ public class Notes1 {
             case "create":
                 createNote(notesDir);
                 finish(0);
+                break;
+            case "read":
+                if (args.length < 2) {
+                    System.err.println("Error: No filename provided.");
+                    System.err.println("Usage: java Notes1 read <filename>");
+                    finish(1);
+                }
+                readNote(notesDir, args[1]);
+                finish(0);
+                break;
+            case "update":
+                
             default:
                 System.err.println("Error: Unknown command '" + command + "'");
                 System.err.println("Try 'java Notes1 help' for more information.");
@@ -242,6 +242,41 @@ public class Notes1 {
         }
         catch (Exception e) {
             System.out.println("Error creating note: " + e.getMessage());
+        }
+
+    }
+
+    private static void readNote(Path notesDir, String fileName) {
+        try {
+            Path notesSubdir = notesDir.resolve("notes");
+            Path notePath = notesSubdir.resolve(fileName);
+            if (!Files.exists(notePath)) {
+                System.err.println("Error: Note not found: " + fileName);
+                return;
+            }
+            String content = Files.readString(notePath);
+            System.out.println("\n" + content);
+        } catch (Exception e) {
+            System.err.println("Error reading note: " + e.getMessage());
+        }
+    }
+
+    public static void updateNote(Path notesDir, String fileName) {
+        try {    
+            Path notesSubdir = notesDir.resolve("notes");
+            Path notePath = notesSubdir.resolve(fileName);
+            if(!Files.exists(notePath)) {
+                System.out.println("Error: Note not found: " + fileName);
+                return;
+            }
+            String content = Files.readString(notePath);
+            java.time.LocalDateTime now = java.time.LocalDateTime.now();
+            String timestamp = now.toString();
+            String newContent = content + "\nUpdated at " + timestamp;
+            Files.writeString(notePath, newContent);
+            System.out.println("\nNote updated: " + fileName + "\n");
+        } catch (Exception e) {
+            System.err.println("Error updating note: " + e.getMessage());
         }
 
     }
