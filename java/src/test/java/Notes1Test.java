@@ -27,7 +27,7 @@ public class Notes1Test {
     }
 
     @Test
-    void testDeletenote() throws Exception {
+    void testDeleteNote() throws Exception {
         Notes1.createNote(tempDir);
         Path notesdir = tempDir.resolve("notes");
         Path file = Files.list(notesSubdir).findFirst().get();
@@ -35,6 +35,9 @@ public class Notes1Test {
         Notes1.deleteNote(tempDir, fileName);
         assertFalse(Files.exists(file),"File should be deleted");
     }
+
+    @Time
+    void testSearchNote()
 
 
 }

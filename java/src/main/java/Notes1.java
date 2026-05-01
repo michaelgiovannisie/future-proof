@@ -123,6 +123,7 @@ public class Notes1 {
             Map<String, String> metadata = parseYamlHeader(noteFile);
             String title = metadata.getOrDefault("title", noteFile.getFileName().toString());
             String created = metadata.getOrDefault("created", "N/A");
+            String last_updated = metadata.getOrDefault("last_updated", "N/A");
             String tags = metadata.getOrDefault("tags", "");
             System.out.println("\n" + noteFile.getFileName());
             System.out.println("  Title: " + title);
@@ -197,12 +198,16 @@ public class Notes1 {
                 finish(success ? 0 : 1);
                 break;
             case "create":
-                createNote(notesDir);
+                if (args.length < 3) {
+                    System.err.println("Usage: java Notes1 create \"title\" \"tag1,tag2\"");
+                    finish(1);
+                }
+                createNote(notesDir, args[1], args[2]);
                 finish(0);
                 break;
             case "read":
                 if (args.length < 2) {
-                    System.err.println("Error: No filename provided.");
+                    System.err.println("No filename provided.");
                     System.err.println("Usage: java Notes1 read <filename>");
                     finish(1);
                 }
@@ -211,12 +216,30 @@ public class Notes1 {
                 break;
             case "update":
                 if (args.length < 2) {
-                    System.err.println("Error: No filename provided.");
+                    System.err.println("No filename provided.");
                     System.err.println("Usage: java Notes1 update <filename>");
                     finish(1);
                 }
                 updateNote(notesDir, args[1]);
                 finish(0);
+                break;
+            case "delete":
+                if (args.length < 2) {
+                    System.err.println("No filename provided.");
+                    System.err.println("Usage: java Notes1 delete <filename>");
+                    finish(1);
+                }
+                deleteNote(notesDir, args[1]);
+                finish(0);
+                break;
+            case "search":
+                try {
+                    searchNote(notesDir, args[1]);
+                    finish(0);
+                } catch (IOException e) {
+                    System.err.println("Search failed: " + e.getMessage());
+                    finish(1);
+                }
                 break;
             default:
                 System.err.println("Error: Unknown command '" + command + "'");
@@ -225,7 +248,7 @@ public class Notes1 {
         }
     }
 
-    public static void createNote(Path notesDir) {
+    public static void createNote(Path notesDir, String title, String tags) {
         try {
             Path notesSubdir = notesDir.resolve("notes");
             Files.createDirectories(notesSubdir);
@@ -235,22 +258,30 @@ public class Notes1 {
                 java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm")
             ) + ".note";
             Path notePath = notesSubdir.resolve(fileName);
+            Path tempFile = Files.createTempFile("note-content-", ".txt");
+            ProcessBuilder pb = new ProcessBuilder("nano", tempFile.toString());
+            pb.inheritIO();
+            Process process = pb.start();
+            process.waitFor();
+            String body = Files.readString(tempFile);
             String content = """
                 ---
-                title: New Note
-                author: Michael
+                title: %s
+                author: Michael Sie
                 created: %s
-                tags: []
+                last_updated: %s
+                tags: [%s]
                 ---
 
-                """.formatted(timestamp);
+                %s
+                """.formatted(title, timestamp, timestamp, tags, body);
             Files.writeString(notePath, content);
+            Files.deleteIfExists(tempFile);
             System.out.println("Note created: " + fileName);
         }
         catch (Exception e) {
             System.out.println("Error creating note: " + e.getMessage());
         }
-
     }
 
     public static void readNote(Path notesDir, String fileName) {
@@ -258,7 +289,7 @@ public class Notes1 {
             Path notesSubdir = notesDir.resolve("notes");
             Path notePath = notesSubdir.resolve(fileName);
             if (!Files.exists(notePath)) {
-                System.err.println("Error: Note not found: " + fileName);
+                System.err.println("Note not found: " + fileName);
                 return;
             }
             String content = Files.readString(notePath);
@@ -273,18 +304,96 @@ public class Notes1 {
             Path notesSubdir = notesDir.resolve("notes");
             Path notePath = notesSubdir.resolve(fileName);
             if(!Files.exists(notePath)) {
-                System.out.println("Error: Note not found: " + fileName);
+                System.err.println("Note not found: " + fileName);
                 return;
             }
             String content = Files.readString(notePath);
+            Path tempFile = Files.createTempFile("note-content-", ".txt");
+            Files.writeString(tempFile, content);
+            ProcessBuilder pb = new ProcessBuilder("nano", tempFile.toString());
+            pb.inheritIO();
+            Process process = pb.start();
+            process.waitFor();
+            String newContent = Files.readString(tempFile);
             java.time.LocalDateTime now = java.time.LocalDateTime.now();
             String timestamp = now.toString();
-            String newContent = content + "\nUpdated at " + timestamp;
+            String[] lines = newContent.split("\n");
+            for (int i = 0; i < lines.length; i++) {
+                if (lines[i].startsWith("last_updated:")) {
+                    lines[i] = "last_updated: " + timestamp;
+                }
+            }
+            newContent = String.join("\n", lines);
             Files.writeString(notePath, newContent);
+            Files.deleteIfExists(tempFile);
             System.out.println("\nNote updated: " + fileName + "\n");
         } catch (Exception e) {
             System.err.println("Error updating note: " + e.getMessage());
         }
     }
 
+    public static void deleteNote(Path notesDir, String fileName){
+        try {
+            Path notesSubdir = notesDir.resolve("notes");
+            Path notePath = notesSubdir.resolve(fileName);
+            if(!Files.exists(notePath)) {
+                System.err.println("Note not found: " + fileName);
+                return;
+            }
+            Files.delete(notePath);
+            System.out.println("Note successfully deleted: " + fileName);
+        } catch (Exception e) {
+            System.err.println("Error deleting note: " + e.getMessage());
+        }
+    }
+
+    public static void searchNote(Path notesDir, String keyword) throws IOException {
+        if (!Files.exists(notesDir)) {
+            System.err.println("Error: Notes directory does not exist: " + notesDir);
+            System.err.println("Create it with: mkdir -p ~/.notes/notes");
+            System.err.println("Then copy test notes: cp test-notes/*.md ~/.notes/notes/");
+            return;
+        }
+        Path notesSubdir = notesDir.resolve("notes");
+        Path searchDir = Files.exists(notesSubdir) ? notesSubdir : notesDir;
+        List<Path> noteFiles;
+            try (Stream<Path> paths = Files.walk(searchDir, 1)) {
+                noteFiles = paths
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String name = p.getFileName().toString();
+                    return name.endsWith(".md") || name.endsWith(".note") || name.endsWith(".txt");
+                    })
+                    .sorted()
+                    .toList();
+                }
+        if (noteFiles.isEmpty()) {
+            System.out.println("No notes found in " + notesDir);
+            System.err.println("Copy test notes with: cp test-notes/*.md ~/.notes/");
+            return;
+        }
+        boolean found = false;
+        System.out.println("Result: ");
+        keyword = keyword.toLowerCase();
+        for(Path noteFile : noteFiles) {
+            try {
+                Map<String, String> metadata = parseYamlHeader(noteFile);
+                String title = metadata.getOrDefault("title", noteFile.getFileName().toString());
+                String created = metadata.getOrDefault("created", "");
+                String tags = metadata.getOrDefault("tags", "");
+                String content = Files.readString(noteFile);
+                if(title.toLowerCase().contains(keyword) || created.toLowerCase().contains(keyword) || 
+                    tags.toLowerCase().contains(keyword) || content.toLowerCase().contains(keyword)) {
+                    System.out.println("\n" + noteFile.getFileName() + " | " + title);
+                    found = true;
+                }
+            } catch(IOException e) {}   
+        }
+        if(!found) {
+                System.out.println("No file contains: " + keyword);
+            }  
+    }
 }
+
+
+
