@@ -106,14 +106,14 @@
   <div class="top-bar">
     <input id="searchInput" placeholder="Search memories...">
     <button onclick="searchNotes()">Search</button>
-    <button onclick="toggleForm()">+ Memory</button>
+    <button onclick="toggleForm()">Add Memory</button>
     <button id="toggleBtn" onclick="loadNotes()">Show</button>
-    <button onclick="randomMemory()">Don't you remember?</button>
+    <button onclick="randomMemory()">Do you remember?</button>
   </div>
 
   <!-- ✅ FORM -->
   <div id="form">
-    <h3>New Memory</h3>
+    <h3>Keep your memory alive</h3>
 
     <input id="title" placeholder="Title">
     <input id="tags" placeholder="tags">
@@ -142,11 +142,250 @@
           const container = document.getElementById('notes');
           container.innerHTML = "";
 
+          const lines = data.split("\n").filter(line => line.trim());
+
+          // 🔥 Promise.all preserves order
+          Promise.all(
+            lines.map(line => {
+              const fileName = line.split(" - ")[0];
+
+              return fetch(`/api/note?file=${fileName}`)
+                .then(r => r.text())
+                .then(content => ({ fileName, content }));
+            })
+          ).then(results => {
+
+            results.forEach(({ fileName, content }) => {
+
+              let title="", tags="", created="", updated="";
+              let inYaml=false;
+
+              content.split("\n").forEach(l => {
+                if (l.trim()==="---") inYaml=!inYaml;
+                else if (inYaml) {
+                  if (l.startsWith("title:")) title=l.replace("title:","").trim();
+                  if (l.startsWith("tags:")) tags=l.replace("tags:","").replace(/[\[\]]/g,"").trim();
+                  if (l.startsWith("created:")) created=l.replace("created:","").trim();
+                  if (l.startsWith("last_updated:")) updated=l.replace("last_updated:","").trim();
+                }
+              });
+
+              const div=document.createElement("div");
+              div.className="note";
+
+              div.innerHTML=`
+                <div>
+                  <strong>${title}</strong>
+                  <div>
+                    ${tags.split(',').map(t=>`<span class="tag">${t.trim()}</span>`).join('')}
+                  </div>
+                </div>
+
+                <div style="text-align:right;">
+                  <small>Created at: ${created}</small><br>
+                  <small>Last updated at: ${updated}</small><br>
+                  <button onclick="event.stopPropagation(); deleteNote('${fileName}')">Delete</button>
+                </div>
+              `;
+
+              div.onclick=()=>loadNote(fileName);
+
+              container.appendChild(div);
+            });
+
+            notesVisible=true;
+            document.getElementById("toggleBtn").innerText="Hide";
+          });
+        });
+    }
+
+    function loadNotes() {
+      if (notesVisible) {
+        document.getElementById('notes').innerHTML="";
+        notesVisible=false;
+        toggleBtn.innerText="Show";
+      } else renderNotes();
+    }
+
+    function createNote() {
+
+      const titleEl = document.getElementById("title");
+      const contentEl = document.getElementById("content");
+      const tagsEl = document.getElementById("tags");
+
+      if (!titleEl || !contentEl || !tagsEl) {
+        console.error("Missing input field");
+        return;
+      }
+
+      const title = titleEl.value;
+      const content = contentEl.value;
+      const tags = tagsEl.value;
+
+      const fileInput = document.getElementById("imageFile");
+      const file = fileInput ? fileInput.files[0] : null;
+
+      const clearForm = () => {
+        titleEl.value = "";
+        contentEl.value = "";
+        tagsEl.value = "";
+        if (fileInput) fileInput.value = ""; // reset file picker
+        toggleForm(); // close form
+      };
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function() {
+          fetch('/api/create',{
+            method:'POST',
+            body:`|${title}|${content}|${tags}|${reader.result}`
+          }).then(() => {
+            renderNotes();
+            clearForm(); // ✅ HERE
+          });
+        };
+        reader.readAsDataURL(file);
+      } else {
+        fetch('/api/create',{
+          method:'POST',
+          body:`|${title}|${content}|${tags}|`
+        }).then(() => {
+          renderNotes();
+          clearForm(); // ✅ HERE
+        });
+      }
+    }
+
+    function loadNote(fileName) {
+      fetch(`/api/note?file=${fileName}`)
+        .then(res=>res.text())
+        .then(data=>{
+
+          let title="",tags="",created="",updated="",image="",body="";
+          let inYaml=false,done=false;
+
+          data.split("\n").forEach(line=>{
+            if (line.trim()==="---") {
+              if (!inYaml) inYaml=true;
+              else {inYaml=false;done=true;}
+              return;
+            }
+
+            if (inYaml) {
+              if (line.startsWith("title:")) title=line.replace("title:","").trim();
+              if (line.startsWith("tags:")) tags=line.replace("tags:","").replace(/[\[\]]/g,"").trim();
+              if (line.startsWith("created:")) created=line.replace("created:","").trim();
+              if (line.startsWith("last_updated:")) updated=line.replace("last_updated:","").trim();
+              if (line.startsWith("image:")) image=line.replace("image:","").trim();
+            } else if (done) {
+              body+=line+"\n";
+            }
+          });
+
+          document.getElementById('notes').innerHTML=`
+
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button onclick="renderNotes()">Back</button>
+            <button onclick="editNote('${fileName}')">Edit</button>
+          </div>
+
+          <div style="display:flex; gap:20px; margin-top:20px;">
+            <div style="flex:1;">
+              <h2>${title}</h2>
+              <p>${tags}</p>
+              <p>Created: ${created}</p>
+              <p>Updated: ${updated}</p>
+              <pre>${body}</pre>
+            </div>
+
+            <div style="flex:1;">
+              ${image ? `<img src="${image}" style="max-width:100%; border-radius:10px;">` : ""}
+            </div>
+          </div>
+
+        `;
+        });
+    }
+
+    function editNote(fileName) {
+      fetch(`/api/note?file=${fileName}`)
+        .then(r=>r.text())
+        .then(data=>{
+
+          let title="",tags="",body="";
+          let inYaml=false,done=false;
+
+          data.split("\n").forEach(line=>{
+            if (line.trim()==="---") {
+              if (!inYaml) inYaml=true;
+              else {inYaml=false;done=true;}
+              return;
+            }
+
+            if (inYaml) {
+              if (line.startsWith("title:")) title=line.replace("title:","").trim();
+              if (line.startsWith("tags:")) tags=line.replace("tags:","").replace(/[\[\]]/g,"").trim();
+            } else if (done) {
+              body+=line+"\n";
+            }
+          });
+
+          document.getElementById('notes').innerHTML=`
+            <input id="editTitle" value="${title}">
+            <input id="editTags" value="${tags}">
+            <input type="file" id="editImageFile">
+            <textarea id="editContent" style="height: 200px;">${body}</textarea>
+            <button onclick="updateNote('${fileName}', '${fileName}')">Save</button>
+          `;
+        });
+    }
+
+    function updateNote(oldFileName, newFileName) {
+      const title = document.getElementById("editTitle").value; // ✅ FIX
+      const tags = document.getElementById("editTags").value;
+      const content = document.getElementById("editContent").value;
+      const file = document.getElementById("editImageFile").files[0];
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function() {
+          fetch('/api/update',{
+            method:'POST',
+            body:`${oldFileName}|${newFileName}|${title}|${tags}|${reader.result}|${content}`
+          }).then(()=>renderNotes());
+        };
+        reader.readAsDataURL(file);
+      } else {
+        fetch('/api/update',{
+          method:'POST',
+          body:`${oldFileName}|${newFileName}|${title}|${tags}||${content}`
+        }).then(()=>renderNotes());
+      }
+    }
+
+    function deleteNote(fileName) {
+      fetch('/api/delete',{
+        method:'POST',
+        body:fileName
+      }).then(()=>renderNotes());
+    }
+
+    function searchNotes() {
+      const q = document.getElementById("searchInput").value;
+
+      fetch(`/api/search?q=${q}`)
+        .then(r => r.text())
+        .then(data => {
+
+          const container = document.getElementById("notes");
+          container.innerHTML = "";
+
           data.split("\n").forEach(line => {
             if (!line.trim()) return;
 
             const fileName = line.split(" - ")[0];
 
+            // 🔥 SAME AS renderNotes()
             fetch(`/api/note?file=${fileName}`)
               .then(r => r.text())
               .then(content => {
@@ -182,189 +421,10 @@
                   </div>
                 `;
 
-                div.onclick=()=>loadNote(fileName);
+                div.onclick = () => loadNote(fileName);
 
                 container.appendChild(div);
               });
-          });
-
-          notesVisible=true;
-          document.getElementById("toggleBtn").innerText="Hide";
-        });
-    }
-
-    function loadNotes() {
-      if (notesVisible) {
-        document.getElementById('notes').innerHTML="";
-        notesVisible=false;
-        toggleBtn.innerText="Show";
-      } else renderNotes();
-    }
-
-    // ✅ FIXED CREATE
-    function createNote() {
-
-      const titleEl = document.getElementById("title");
-      const contentEl = document.getElementById("content");
-      const tagsEl = document.getElementById("tags");
-
-      if (!titleEl || !contentEl || !tagsEl) {
-        console.error("Missing input field");
-        return;
-      }
-
-      const title = titleEl.value;
-      const content = contentEl.value;
-      const tags = tagsEl.value;
-
-      const fileInput = document.getElementById("imageFile");
-      const file = fileInput ? fileInput.files[0] : null;
-
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function() {
-          fetch('/api/create',{
-            method:'POST',
-            body:`|${title}|${content}|${tags}|${reader.result}`
-          }).then(()=>renderNotes());
-        };
-        reader.readAsDataURL(file);
-      } else {
-        fetch('/api/create',{
-          method:'POST',
-          body:`|${title}|${content}|${tags}|`
-        }).then(()=>renderNotes());
-      }
-    }
-
-    function loadNote(fileName) {
-      fetch(`/api/note?file=${fileName}`)
-        .then(res=>res.text())
-        .then(data=>{
-
-          let title="",tags="",created="",updated="",image="",body="";
-          let inYaml=false,done=false;
-
-          data.split("\n").forEach(line=>{
-            if (line.trim()==="---") {
-              if (!inYaml) inYaml=true;
-              else {inYaml=false;done=true;}
-              return;
-            }
-
-            if (inYaml) {
-              if (line.startsWith("title:")) title=line.replace("title:","").trim();
-              if (line.startsWith("tags:")) tags=line.replace("tags:","").replace(/[\[\]]/g,"").trim();
-              if (line.startsWith("created:")) created=line.replace("created:","").trim();
-              if (line.startsWith("last_updated:")) updated=line.replace("last_updated:","").trim();
-              if (line.startsWith("image:")) image=line.replace("image:","").trim();
-            } else if (done) {
-              body+=line+"\n";
-            }
-          });
-
-          document.getElementById('notes').innerHTML=`
-            <button onclick="renderNotes()">Back</button>
-
-            <div style="display:flex; gap:20px; margin-top:20px;">
-              <div style="flex:1;">
-                <h2>${title}</h2>
-                <p>${tags}</p>
-                <p>Created: ${created}</p>
-                <p>Updated: ${updated}</p>
-                <pre>${body}</pre>
-              </div>
-
-              <div style="flex:1;">
-                ${image ? `<img src="${image}" style="max-width:100%; border-radius:10px;">` : ""}
-              </div>
-            </div>
-
-            <button onclick="editNote('${fileName}')">Edit</button>
-          `;
-        });
-    }
-
-    function editNote(fileName) {
-      fetch(`/api/note?file=${fileName}`)
-        .then(r=>r.text())
-        .then(data=>{
-
-          let title="",tags="",body="";
-          let inYaml=false,done=false;
-
-          data.split("\n").forEach(line=>{
-            if (line.trim()==="---") {
-              if (!inYaml) inYaml=true;
-              else {inYaml=false;done=true;}
-              return;
-            }
-
-            if (inYaml) {
-              if (line.startsWith("title:")) title=line.replace("title:","").trim();
-              if (line.startsWith("tags:")) tags=line.replace("tags:","").replace(/[\[\]]/g,"").trim();
-            } else if (done) {
-              body+=line+"\n";
-            }
-          });
-
-          document.getElementById('notes').innerHTML=`
-            <input id="editFileName" value="${fileName}">
-            <input id="editTitle" value="${title}">
-            <input id="editTags" value="${tags}">
-            <input type="file" id="editImageFile">
-            <textarea id="editContent" style="height: 200px;">${body}</textarea>
-            <button onclick="updateNote('${fileName}')">Save</button>
-          `;
-        });
-    }
-
-    function updateNote(oldFileName) {
-      const newFileName = document.getElementById("editFileName").value;
-      const title = document.getElementById("editTitle").value;
-      const tags = document.getElementById("editTags").value;
-      const content = document.getElementById("editContent").value;
-      const file = document.getElementById("editImageFile").files[0];
-
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function() {
-          fetch('/api/update',{
-            method:'POST',
-            body:`${oldFileName}|${newFileName}|${title}|${tags}|${reader.result}|${content}`
-          }).then(()=>renderNotes());
-        };
-        reader.readAsDataURL(file);
-      } else {
-        fetch('/api/update',{
-          method:'POST',
-          body:`${oldFileName}|${newFileName}|${title}|${tags}||${content}`
-        }).then(()=>renderNotes());
-      }
-    }
-
-    function deleteNote(fileName) {
-      fetch('/api/delete',{
-        method:'POST',
-        body:fileName
-      }).then(()=>renderNotes());
-    }
-
-    function searchNotes() {
-      const q=document.getElementById("searchInput").value;
-
-      fetch(`/api/search?q=${q}`)
-        .then(r=>r.text())
-        .then(data=>{
-          const container=document.getElementById("notes");
-          container.innerHTML="";
-          data.split("\n").forEach(line=>{
-            if (!line.trim()) return;
-            const file=line.split(" - ")[0];
-            const div=document.createElement("div");
-            div.innerText=line;
-            div.onclick=()=>loadNote(file);
-            container.appendChild(div);
           });
         });
     }
