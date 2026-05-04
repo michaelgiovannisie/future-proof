@@ -401,10 +401,8 @@ public class Notes1 {
 
     public static String listNotesAsString(Path notesDir) {
         StringBuilder result = new StringBuilder();
-
         try {
             Path searchDir = getNotesDirectory(notesDir);
-
             List<Path> files;
             try (Stream<Path> stream = Files.walk(searchDir, 1)) {
                 files = stream
@@ -413,13 +411,9 @@ public class Notes1 {
                 .sorted((p1, p2) -> p2.getFileName().toString().compareTo(p1.getFileName().toString()))
                 .toList();
             }
-
-            // 🔥 NO SORTING (remove bug source)
-
             for (Path path : files) {
                 try {
                     String content = Files.readString(path);
-
                     String title = "(no title)";
                     for (String line : content.split("\n")) {
                         line = line.trim();
@@ -428,20 +422,16 @@ public class Notes1 {
                             break;
                         }
                     }
-
                     result.append(path.getFileName())
                         .append(" - ")
                         .append(title)
                         .append("\n");
-
                 } catch (Exception ignored) {}
             }
-
         } catch (Exception e) {
-            e.printStackTrace(); // 🔥 IMPORTANT
+            e.printStackTrace();
             return "Error: " + e.getMessage();
         }
-
         return result.toString();
     }
     
@@ -449,13 +439,10 @@ public class Notes1 {
         try {
             Path searchDir = getNotesDirectory(notesDir);
             Path notePath = searchDir.resolve(fileName);
-
             if (!Files.exists(notePath)) {
                 return "Note not found";
             }
-
             return Files.readString(notePath);
-
         } catch (Exception e) {
             return "Error: " + e.getMessage();
         }
@@ -465,21 +452,15 @@ public class Notes1 {
         try {
             Path searchDir = getNotesDirectory(notesDir);
             Files.createDirectories(searchDir);
-
             java.time.LocalDateTime now = java.time.LocalDateTime.now();
             String timestamp = now.toString();
-
             fileName = now.format(
                 java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss")
             ) + ".note";
-
-            // ✅ ensure extension
             if (!fileName.endsWith(".note")) {
                 fileName += ".note";
             }
-
             Path notePath = searchDir.resolve(fileName);
-
             String note = """
                 ---
                 title: %s
@@ -488,14 +469,10 @@ public class Notes1 {
                 tags: [%s]
                 image: %s
                 ---
-
                 %s
                 """.formatted(title, timestamp, timestamp, tags, image, content);
-
             Files.writeString(notePath, note);
-
             return "Created: " + fileName;
-
         } catch (Exception e) {
             return "Error: " + e.getMessage();
         }
@@ -518,41 +495,27 @@ public class Notes1 {
     public static String updateNoteFromUI(Path notesDir, String oldFileName, String newFileName, String title, String tags, String image, String newContent) {
         try {
             Path searchDir = getNotesDirectory(notesDir);
-
             Path oldPath = searchDir.resolve(oldFileName);
-
             if (!Files.exists(oldPath)) {
                 return "Note not found";
             }
-
-            // ✅ ensure extension
             if (!newFileName.endsWith(".note")) {
                 newFileName += ".note";
             }
-
             Path newPath = searchDir.resolve(newFileName);
-
-            // ✅ rename if needed
             if (!oldFileName.equals(newFileName)) {
                 Files.move(oldPath, newPath);
             }
-
             String existing = Files.readString(newPath);
-
             String created = "";
-
-            // extract created timestamp
             for (String line : existing.split("\n")) {
                 if (line.startsWith("created:")) {
                     created = line.replace("created:", "").trim();
                     break;
                 }
             }
-
             java.time.LocalDateTime now = java.time.LocalDateTime.now();
             String updatedTime = now.toString();
-
-            // ✅ preserve old image if new one is empty
             if (image == null || image.isBlank()) {
                 for (String line : existing.split("\n")) {
                     if (line.startsWith("image:")) {
@@ -561,7 +524,6 @@ public class Notes1 {
                     }
                 }
             }
-
             String updated = """
                 ---
                 title: %s
@@ -570,14 +532,10 @@ public class Notes1 {
                 tags: [%s]
                 image: %s
                 ---
-
                 %s
                 """.formatted(title, created, updatedTime, tags, image, newContent);
-
             Files.writeString(newPath, updated);
-
             return "Updated: " + newFileName;
-
         } catch (Exception e) {
             return "Error: " + e.getMessage();
         }
@@ -586,19 +544,14 @@ public class Notes1 {
     public static String getRandomNote(Path notesDir) {
         try {
             Path searchDir = getNotesDirectory(notesDir);
-
             List<Path> files = Files.list(searchDir)
             .filter(Files::isRegularFile)
             .filter(p -> p.toString().endsWith(".note"))
             .toList();
-
             if (files.isEmpty()) return "No memories found.";
-
             java.util.Random rand = new java.util.Random();
             Path random = files.get(rand.nextInt(files.size()));
-
             return random.getFileName().toString();
-
         } catch (Exception e) {
             return "Error: " + e.getMessage();
         }
@@ -606,25 +559,19 @@ public class Notes1 {
 
     public static String searchNotes(Path notesDir, String keyword) {
         StringBuilder result = new StringBuilder();
-
         try {
             Path searchDir = getNotesDirectory(notesDir);
-
             Files.list(searchDir).forEach(path -> {
                 try {
                     String content = Files.readString(path).toLowerCase();
-
                     if (content.contains(keyword)) {
-
                         Map<String, String> metadata = parseYamlHeader(path);
                         String title = metadata.getOrDefault("title", path.getFileName().toString());
-
                         result.append(path.getFileName())
                             .append(" - ")
                             .append(title)
                             .append("\n");
                     }
-
                 } catch (Exception ignored) {}
             });
 

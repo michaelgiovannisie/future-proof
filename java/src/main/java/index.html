@@ -111,7 +111,7 @@
     <button onclick="randomMemory()">Do you remember?</button>
   </div>
 
-  <!-- ✅ FORM -->
+  <!-- FORM -->
   <div id="form">
     <h3>Keep your memory alive</h3>
 
@@ -144,7 +144,6 @@
 
           const lines = data.split("\n").filter(line => line.trim());
 
-          // 🔥 Promise.all preserves order
           Promise.all(
             lines.map(line => {
               const fileName = line.split(" - ")[0];
@@ -229,8 +228,8 @@
         titleEl.value = "";
         contentEl.value = "";
         tagsEl.value = "";
-        if (fileInput) fileInput.value = ""; // reset file picker
-        toggleForm(); // close form
+        if (fileInput) fileInput.value = ""; 
+        toggleForm(); 
       };
 
       if (file) {
@@ -241,7 +240,7 @@
             body:`|${title}|${content}|${tags}|${reader.result}`
           }).then(() => {
             renderNotes();
-            clearForm(); // ✅ HERE
+            clearForm();
           });
         };
         reader.readAsDataURL(file);
@@ -251,7 +250,7 @@
           body:`|${title}|${content}|${tags}|`
         }).then(() => {
           renderNotes();
-          clearForm(); // ✅ HERE
+          clearForm(); 
         });
       }
     }
