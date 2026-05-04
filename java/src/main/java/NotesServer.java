@@ -1,6 +1,5 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -17,36 +16,34 @@ public class NotesServer {
         // 🔥 LIST NOTES
         server.createContext("/api/notes", exchange -> {
             String response = Notes1.listNotesAsString(notesDir);
-
-            sendResponse(exchange, response);
+            send(exchange, response);
         });
 
-        // 🔥 CREATE NOTE (with image)
+        // 🔥 CREATE NOTE
         server.createContext("/api/create", exchange -> {
-
             if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
                 exchange.sendResponseHeaders(405, -1);
                 return;
             }
 
+            // ✅ ADD THIS LINE (this is the fix)
             String body = new String(exchange.getRequestBody().readAllBytes());
 
-            // title | content | tags | image
-            String[] parts = body.split("\\|", 4);
+            String[] parts = body.split("\\|", 5);
 
-            String title = parts.length > 0 ? parts[0] : "";
-            String content = parts.length > 1 ? parts[1] : "";
-            String tags = parts.length > 2 ? parts[2] : "";
-            String image = parts.length > 3 ? parts[3] : "";
+            String fileName = parts.length > 0 ? parts[0] : "";
+            String title = parts.length > 1 ? parts[1] : "";
+            String content = parts.length > 2 ? parts[2] : "";
+            String tags = parts.length > 3 ? parts[3] : "";
+            String image = parts.length > 4 ? parts[4] : "";
 
-            String response = Notes1.createNoteFromUI(notesDir, title, content, tags, image);
+            String response = Notes1.createNoteFromUI(notesDir, fileName, title, content, tags, image);
 
-            sendResponse(exchange, response);
+            send(exchange, response);
         });
 
         // 🔥 READ NOTE
         server.createContext("/api/note", exchange -> {
-
             String query = exchange.getRequestURI().getQuery();
             String fileName = "";
 
@@ -56,12 +53,11 @@ public class NotesServer {
 
             String response = Notes1.readNoteAsString(notesDir, fileName);
 
-            sendResponse(exchange, response);
+            send(exchange, response);
         });
 
-        // 🔥 UPDATE NOTE (with image)
+        // 🔥 UPDATE NOTE
         server.createContext("/api/update", exchange -> {
-
             if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
                 exchange.sendResponseHeaders(405, -1);
                 return;
@@ -69,23 +65,21 @@ public class NotesServer {
 
             String body = new String(exchange.getRequestBody().readAllBytes());
 
-            // fileName | title | tags | image | content
-            String[] parts = body.split("\\|", 5);
+            String[] parts = body.split("\\|", 6);
 
-            String fileName = parts.length > 0 ? parts[0] : "";
-            String title = parts.length > 1 ? parts[1] : "";
-            String tags = parts.length > 2 ? parts[2] : "";
-            String image = parts.length > 3 ? parts[3] : "";
-            String content = parts.length > 4 ? parts[4] : "";
+            String oldFileName = parts.length > 0 ? parts[0] : "";
+            String newFileName = parts.length > 1 ? parts[1] : "";
+            String title = parts.length > 2 ? parts[2] : "";
+            String tags = parts.length > 3 ? parts[3] : "";
+            String image = parts.length > 4 ? parts[4] : "";
+            String content = parts.length > 5 ? parts[5] : "";
 
-            String response = Notes1.updateNoteFromUI(notesDir, fileName, title, tags, image, content);
-
-            sendResponse(exchange, response);
+            String response = Notes1.updateNoteFromUI(notesDir, oldFileName, newFileName, title, tags, image, content);
+            send(exchange, response);
         });
 
-        // 🔥 DELETE NOTE
+        // 🔥 DELETE NOTE (FIXED)
         server.createContext("/api/delete", exchange -> {
-
             if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
                 exchange.sendResponseHeaders(405, -1);
                 return;
@@ -93,14 +87,13 @@ public class NotesServer {
 
             String fileName = new String(exchange.getRequestBody().readAllBytes());
 
-            String response = Notes1.deleteNote(notesDir, fileName);
+            String response = Notes1.deleteNoteFromUI(notesDir, fileName);
 
-            sendResponse(exchange, response);
+            send(exchange, response);
         });
 
         // 🔥 SEARCH
         server.createContext("/api/search", exchange -> {
-
             String query = exchange.getRequestURI().getQuery();
 
             final String keyword = (query != null && query.startsWith("q="))
@@ -109,24 +102,47 @@ public class NotesServer {
 
             String response = Notes1.searchNotes(notesDir, keyword);
 
-            sendResponse(exchange, response);
+            send(exchange, response);
         });
 
         // 🔥 RANDOM MEMORY
         server.createContext("/api/random", exchange -> {
-
             String response = Notes1.getRandomNote(notesDir);
-
-            sendResponse(exchange, response);
+            send(exchange, response);
         });
 
+        server.createContext("/", exchange -> {
+
+        if (!exchange.getRequestURI().getPath().equals("/")) {
+            exchange.sendResponseHeaders(404, -1);
+            return;
+        }
+
+        try {
+            String html = java.nio.file.Files.readString(java.nio.file.Path.of("index.html"));
+
+            exchange.getResponseHeaders().add("Content-Type", "text/html");
+            exchange.sendResponseHeaders(200, html.getBytes().length);
+
+            OutputStream os = exchange.getResponseBody();
+            os.write(html.getBytes());
+            os.close();
+
+        } catch (Exception e) {
+            String error = "Error loading index.html: " + e.getMessage();
+            exchange.sendResponseHeaders(500, error.getBytes().length);
+
+            OutputStream os = exchange.getResponseBody();
+            os.write(error.getBytes());
+            os.close();
+        }
+    });
         server.start();
         System.out.println("Server running at http://localhost:8080");
     }
 
-    // 🔥 Helper method
-    private static void sendResponse(HttpExchange exchange, String response) throws IOException {
-
+    // 🔥 HELPER
+    private static void send(HttpExchange exchange, String response) throws IOException {
         exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
         exchange.getResponseHeaders().add("Content-Type", "text/plain");
 
